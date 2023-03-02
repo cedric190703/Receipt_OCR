@@ -4,14 +4,15 @@ import matplotlib.pyplot as plt
 import pytesseract
 from skimage.filters import threshold_local
 from pytesseract import Output
-
+import json
+import re
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe'
 
 # Load the image using OpenCV
 image = cv2.imread(r'C:\Users\cbrzy\OneDrive\Bureau\ticket.jpg') 
 
-#Preprocessing part ->
-#resize the image
+# Preprocessing part ->
+# Resize the image
 def opencv_resize(image, ratio):
     width = int(image.shape[1] * ratio)
     height = int(image.shape[0] * ratio)
@@ -125,6 +126,7 @@ def wrap_perspective(img, rect):
     # warp the perspective to grab the screen
     return cv2.warpPerspective(img, M, (maxWidth, maxHeight))
 
+#correct perspective
 scanned = wrap_perspective(original.copy(), contour_to_rect(receipt_contour))
 
 # Apply bilateral filter to smooth the image
@@ -134,15 +136,14 @@ bilateral = cv2.bilateralFilter(scanned, 9, 75, 75)
 inverted = cv2.bitwise_not(bilateral)
 
 # Apply fixed-level binary threshold to the inverted image
-threshold_value = 78
+threshold_value = 76
 _, result = cv2.threshold(inverted, threshold_value, 255, cv2.THRESH_BINARY)
 
 # Perform OCR using Tesseract
 text = pytesseract.image_to_string(result)
 
-# Print the extracted text
-print(text)
-
+# Get the boxes of the receipt to have all lines to have the title
+# But also the place where the receipt was taken
 d = pytesseract.image_to_data(result, output_type=Output.DICT)
 n_boxes = len(d['level'])
 boxes = cv2.cvtColor(result.copy(), cv2.COLOR_BGR2RGB)
@@ -150,9 +151,93 @@ for i in range(n_boxes):
     (x, y, w, h) = (d['left'][i], d['top'][i], d['width'][i], d['height'][i])    
     boxes = cv2.rectangle(boxes, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-cv2.imshow("boxes", boxes)
-
-extracted_text = pytesseract.image_to_string(image)
-print(extracted_text)
-cv2.imshow('image result',result)
+cv2.imshow("result", result)
 cv2.waitKey(0)
+
+# Split the text into lines for the regex part
+lines = text.splitlines()
+
+# Remove spaces for having a better extraction 
+# if Tesseract put some white spaces like for the dates
+text = text.replace(" ", "").replace("\t", "").replace("\n", "")
+
+# Regex part to extracts dates and total price ->
+# Multiples regex for dates to have all the formats
+date_regex_patterns = [
+    r"[A-Z][a-z]{2}\s\d{2}\s\d{4}",  # MMM DD YYYY
+    r"\d{4}-\d{2}-\d{2}",  # YYYY-MM-DD
+    r"\d{2}/\d{2}/\d{4}",  # DD/MM/YYYY
+    r"\d{2}\.\d{2}\.\d{4}",# DD.MM.YYYY
+    r"\d{2}-\d{2}-\d{4}",  # DD-MM-YYYY
+    r"\d{2}\.\d{2},\d{4}", # DD-MM,YYYY
+    r"\d{2}\,\d{2}.\d{4}", # DD,MM-YYYY
+    r"\d{2}\,\d{2},\d{4}",  # DD,MM,YYYY
+    r"\d{4},\d{2}-\d{2}",  # YYYY,MM-DD
+    r"\d{4}-\d{2},\d{2}",  # YYYY-MM,DD
+    r"\d{4},\d{2},\d{2}"  # YYYY,MM,DD
+]
+
+# Loop through each date regex pattern and find matches in the text for the Date date
+dates = []
+for regex in date_regex_patterns:
+    matches = re.findall(regex, text)
+    if matches:
+        dates = matches
+        break  # Stop searching if matches are found
+
+# Multiples regex for times to have all the formats
+time_regex_patterns = [
+    r"\d{2}:\d{2}:\d{2}", #00:00
+    r"\d{2}:\d{2}:\d{2}"  #00:00:00
+]
+
+# Loop through each date regex pattern and find matches in the text for the Date time
+times = []
+for regex in time_regex_patterns:
+    matches = re.findall(regex, text)
+    if matches:
+        times = matches
+        break  # Stop searching if matches are found
+
+# To get the total amount of the receipt
+total_regex_patterns = [
+    r"(?i)total:\s*(\w{3})?(\d+(?:\.\d+)?)",
+    r"(?i)total\s*(\w{3})?(\d+(?:\.\d+)?)"
+]
+
+# Loop through each date regex pattern and find matches in the text for the total amount
+total = []
+for regex in total_regex_patterns:
+    matches = re.findall(regex, text)
+    if matches:
+        total = matches
+        break  # Stop searching if matches are found
+
+# To get the total amount of the receipt
+subTotal_regex_patterns = [
+    r"(?i)subtotal:\s*(\w{3})?(\d+(?:\.\d+)?)",
+    r"(?i)subtotal\s*(\w{3})?(\d+(?:\.\d+)?)",
+    r"(?i)sous-total:\s*(\w{3})?(\d+(?:\.\d+)?)",
+    r"(?i)sous-total\s*(\w{3})?(\d+(?:\.\d+)?)"
+]
+
+# Loop through each date regex pattern and find matches in the text for the total amount
+subtotal = []
+for regex in subTotal_regex_patterns:
+    matches = re.findall(regex, text)
+    if matches:
+        subtotal = matches
+        break  # Stop searching if matches are found
+
+data = {
+    'title': lines[0],
+    'date': dates[0],
+    'time': times[0],
+    'place': lines[2],
+    'total': total[-1],
+    'subtotal': subtotal[-1] if len(subtotal) > 0 else None
+}
+
+# Write the dictionary to a JSON file
+with open('output.json', 'w') as f:
+    json.dump(data, f, indent=4)
