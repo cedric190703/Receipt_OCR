@@ -34,7 +34,7 @@ rectKernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
 dilated = cv2.dilate(blurred, rectKernel)
 
 # Apply Canny edge detection to detect edges
-edges = cv2.Canny(gray, 50, 150, apertureSize=3)
+edges = cv2.Canny(dilated, 100, 200, apertureSize=3)
 
 # Find contours in the image using the edges
 contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -69,6 +69,8 @@ largest_contours = sorted(contours, key = cv2.contourArea, reverse = True)[:10]
 
 # Draw the largest contours on the original image
 image_largest_contours = cv2.drawContours(image.copy(), largest_contours, -1, (0, 255, 0), 3)
+cv2.imshow("receipt", image_largest_contours)
+cv2.waitKey(0)
 
 # Approximate the contour by a more primitive polygon shape
 def approximate_contour(contour):
@@ -87,21 +89,22 @@ def get_receipt_contour(contours):
 receipt_contour = get_receipt_contour(largest_contours)
 
 def contour_to_rect(contour):
-    pts = contour.reshape(4, 2)
-    rect = np.zeros((4, 2), dtype = "float32")
-    # top-left point has the smallest sum
-    # bottom-right has the largest sum
-    s = pts.sum(axis = 1)
-    rect[0] = pts[np.argmin(s)]
-    rect[2] = pts[np.argmax(s)]
-    # compute the difference between the points:
-    # the top-right will have the minumum difference 
-    # the bottom-left will have the maximum difference
-    diff = np.diff(pts, axis = 1)
-    rect[1] = pts[np.argmin(diff)]
-    rect[3] = pts[np.argmax(diff)]
-    return rect / resize_ratio
-
+    if contour is not None:
+        pts = contour.reshape(4, 2)
+        rect = np.zeros((4, 2), dtype = "float32")
+        # top-left point has the smallest sum
+        # bottom-right has the largest sum
+        s = pts.sum(axis = 1)
+        rect[0] = pts[np.argmin(s)]
+        rect[2] = pts[np.argmax(s)]
+        # compute the difference between the points:
+        # the top-right will have the minumum difference 
+        # the bottom-left will have the maximum difference
+        diff = np.diff(pts, axis = 1)
+        rect[1] = pts[np.argmin(diff)]
+        rect[3] = pts[np.argmax(diff)]
+        return rect / resize_ratio
+    
 def wrap_perspective(img, rect):
     # unpack rectangle points: top left, top right, bottom right, bottom left
     (tl, tr, br, bl) = rect
@@ -127,7 +130,10 @@ def wrap_perspective(img, rect):
     return cv2.warpPerspective(img, M, (maxWidth, maxHeight))
 
 #correct perspective
-scanned = wrap_perspective(original.copy(), contour_to_rect(receipt_contour))
+if receipt_contour is not None:
+    scanned = wrap_perspective(original.copy(), contour_to_rect(receipt_contour))
+else:
+    scanned = original.copy()
 
 # Apply bilateral filter to smooth the image
 bilateral = cv2.bilateralFilter(scanned, 9, 75, 75)
@@ -136,7 +142,7 @@ bilateral = cv2.bilateralFilter(scanned, 9, 75, 75)
 inverted = cv2.bitwise_not(bilateral)
 
 # Apply fixed-level binary threshold to the inverted image
-threshold_value = 76
+threshold_value = 112
 _, result = cv2.threshold(inverted, threshold_value, 255, cv2.THRESH_BINARY)
 
 # Perform OCR using Tesseract
@@ -188,7 +194,7 @@ for regex in date_regex_patterns:
 # Multiples regex for times to have all the formats
 time_regex_patterns = [
     r"\d{2}:\d{2}:\d{2}", #00:00
-    r"\d{2}:\d{2}:\d{2}"  #00:00:00
+    r"\d{2}:\d{2}"  #00:00:00
 ]
 
 # Loop through each date regex pattern and find matches in the text for the Date time
@@ -201,8 +207,8 @@ for regex in time_regex_patterns:
 
 # To get the total amount of the receipt
 total_regex_patterns = [
-    r"(?i)total:\s*(\w{3})?(\d+(?:\.\d+)?)",
-    r"(?i)total\s*(\w{3})?(\d+(?:\.\d+)?)"
+    r"(?i)total:\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)",
+    r"(?i)total\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)"
 ]
 
 # Loop through each date regex pattern and find matches in the text for the total amount
@@ -215,10 +221,10 @@ for regex in total_regex_patterns:
 
 # To get the total amount of the receipt
 subTotal_regex_patterns = [
-    r"(?i)subtotal:\s*(\w{3})?(\d+(?:\.\d+)?)",
-    r"(?i)subtotal\s*(\w{3})?(\d+(?:\.\d+)?)",
-    r"(?i)sous-total:\s*(\w{3})?(\d+(?:\.\d+)?)",
-    r"(?i)sous-total\s*(\w{3})?(\d+(?:\.\d+)?)"
+    r"(?i)subtotal:\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)",
+    r"(?i)subtotal\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)",
+    r"(?i)sous-total:\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)",
+    r"(?i)sous-total\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)"
 ]
 
 # Loop through each date regex pattern and find matches in the text for the total amount
@@ -229,12 +235,45 @@ for regex in subTotal_regex_patterns:
         subtotal = matches
         break  # Stop searching if matches are found
 
+# To get the type of the receipt(Credit, ...)
+type_regex_pattern = r'^(Cash|CREDIT|Debit|Prepaid|ElectronicBenefitsTransfer\(EBT\)|GiftCard|StoreCredit|MobilePayment|OnlinePayment|Check|MoneyOrder|BankTransfer|Cryptocurrency)$'
+type = re.findall(type_regex_pattern, text, flags=re.IGNORECASE)
+# File path for brands
+file_path = "brands.txt"
+try:
+    # Read the file into a list of strings
+    with open(file_path, "r", encoding="utf-8") as file:
+        brands_list = [line.strip() for line in file]
+except FileNotFoundError:
+    print("Error: File not found")
+    exit()
+
+brandName = None
+
+# Check the 8 first lines
+for idx in range(1,8):
+    # Loop through the list of brands and search for each brand in the sentence
+    for brand in brands_list:
+        pattern = re.compile(r'\b{}\b'.format(brand))
+        if pattern.search(lines[idx-1]+lines[idx]):
+            brandName = brand
+            break
+
+# If the total is not found
+if(len(total) < 1):
+    amounts = re.findall(r'\d+\.\d{2}\b', text)
+    floats = [float(amount) for amount in amounts]
+    dict = list(dict.fromkeys(floats))
+    total = max(dict)
+
 data = {
-    'title': lines[0],
-    'date': dates[0],
-    'time': times[0],
-    'place': lines[2],
-    'total': total[-1],
+    'first line': lines[0] if len(lines) > 0 else None,
+    'title': brandName,
+    'date': dates[0] if len(dates) > 0 else None,
+    'time': times[0] if len(times) > 0 else None,
+    'place': lines[2] if len(lines) > 0 else None,
+    'type': type[0] if len(type) > 0 else None,
+    'total': total[-1] if len(total) > 0 else None,
     'subtotal': subtotal[-1] if len(subtotal) > 0 else None
 }
 
