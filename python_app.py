@@ -138,34 +138,24 @@ else:
 # Apply bilateral filter to smooth the image
 bilateral = cv2.bilateralFilter(scanned, 9, 75, 75)
 
-# Invert the thresholded image
-inverted = cv2.bitwise_not(bilateral)
+def bw_scanner(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    T = threshold_local(gray, 21, offset = 5, method = "gaussian")
+    return (gray > T).astype("uint8") * 255
 
-# Apply fixed-level binary threshold to the inverted image
-threshold_value = 112
-_, result = cv2.threshold(inverted, threshold_value, 255, cv2.THRESH_BINARY)
+result = bw_scanner(scanned)
+cv2.imshow("result", result)
+cv2.waitKey(0)
 
 # Perform OCR using Tesseract
 text = pytesseract.image_to_string(result)
-
-# Get the boxes of the receipt to have all lines to have the title
-# But also the place where the receipt was taken
-d = pytesseract.image_to_data(result, output_type=Output.DICT)
-n_boxes = len(d['level'])
-boxes = cv2.cvtColor(result.copy(), cv2.COLOR_BGR2RGB)
-for i in range(n_boxes):
-    (x, y, w, h) = (d['left'][i], d['top'][i], d['width'][i], d['height'][i])    
-    boxes = cv2.rectangle(boxes, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-cv2.imshow("result", result)
-cv2.waitKey(0)
 
 # Split the text into lines for the regex part
 lines = text.splitlines()
 
 # Remove spaces for having a better extraction 
 # if Tesseract put some white spaces like for the dates
-text = text.replace(" ", "").replace("\t", "").replace("\n", "")
+text2 = text.replace(" ", "").replace("\t", "").replace("\n", "")
 
 # Regex part to extracts dates and total price ->
 # Multiples regex for dates to have all the formats
@@ -186,7 +176,7 @@ date_regex_patterns = [
 # Loop through each date regex pattern and find matches in the text for the Date date
 dates = []
 for regex in date_regex_patterns:
-    matches = re.findall(regex, text)
+    matches = re.findall(regex, text2)
     if matches:
         dates = matches
         break  # Stop searching if matches are found
@@ -200,7 +190,7 @@ time_regex_patterns = [
 # Loop through each date regex pattern and find matches in the text for the Date time
 times = []
 for regex in time_regex_patterns:
-    matches = re.findall(regex, text)
+    matches = re.findall(regex, text2)
     if matches:
         times = matches
         break  # Stop searching if matches are found
@@ -208,13 +198,17 @@ for regex in time_regex_patterns:
 # To get the total amount of the receipt
 total_regex_patterns = [
     r"(?i)total:\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)",
-    r"(?i)total\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)"
+    r"(?i)total\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)",
+    r"(?i)Balance\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)",
+    r"(?i)Balance:\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)",
+    r"(?i)Debit\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)",
+    r"(?i)Debit:\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)"
 ]
 
 # Loop through each date regex pattern and find matches in the text for the total amount
 total = []
 for regex in total_regex_patterns:
-    matches = re.findall(regex, text)
+    matches = re.findall(regex, text2)
     if matches:
         total = matches
         break  # Stop searching if matches are found
@@ -224,20 +218,23 @@ subTotal_regex_patterns = [
     r"(?i)subtotal:\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)",
     r"(?i)subtotal\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)",
     r"(?i)sous-total:\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)",
-    r"(?i)sous-total\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)"
+    r"(?i)sous-total\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)",
+    r"(?i)Tax\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)",
+    r"(?i)Tax:\s*(\w{3})?([$€£])?(\d+(?:\.\d+)?)",
 ]
 
 # Loop through each date regex pattern and find matches in the text for the total amount
 subtotal = []
 for regex in subTotal_regex_patterns:
-    matches = re.findall(regex, text)
+    matches = re.findall(regex, text2)
     if matches:
         subtotal = matches
         break  # Stop searching if matches are found
 
 # To get the type of the receipt(Credit, ...)
-type_regex_pattern = r'^(Cash|CREDIT|Debit|Prepaid|ElectronicBenefitsTransfer\(EBT\)|GiftCard|StoreCredit|MobilePayment|OnlinePayment|Check|MoneyOrder|BankTransfer|Cryptocurrency)$'
-type = re.findall(type_regex_pattern, text, flags=re.IGNORECASE)
+type_regex_pattern = r'^(Cash|Credit|Debit|Prepaid|ElectronicBenefitsTransfer\(EBT\)|GiftCard|StoreCredit|MobilePayment|OnlinePayment|Check|MoneyOrder|BankTransfer|Cryptocurrency)$'
+type = re.findall(type_regex_pattern, text2, flags=re.IGNORECASE)
+
 # File path for brands
 file_path = "brands.txt"
 try:
@@ -251,27 +248,35 @@ except FileNotFoundError:
 brandName = None
 
 # Check the 8 first lines
-for idx in range(1,8):
-    # Loop through the list of brands and search for each brand in the sentence
-    for brand in brands_list:
-        pattern = re.compile(r'\b{}\b'.format(brand))
-        if pattern.search(lines[idx-1]+lines[idx]):
-            brandName = brand
-            break
+if(len(lines) > 0):
+    for idx in range(1,8):
+        # Loop through the list of brands and search for each brand in the sentence
+        for brand in brands_list:
+            pattern = re.compile(r'\b{}\b'.format(brand))
+            if pattern.search(lines[idx-1]+lines[idx]):
+                brandName = brand
+                break
 
 # If the total is not found
 if(len(total) < 1):
-    amounts = re.findall(r'\d+\.\d{2}\b', text)
-    floats = [float(amount) for amount in amounts]
-    dict = list(dict.fromkeys(floats))
-    total = max(dict)
+    amounts = re.findall(r'\d+\s*\.\s*\d{2}\b', text)
+    if(len(amounts) > 0):
+        floats = [float(amount.replace(" ", "")) for amount in amounts]
+        sorted_amounts = sorted(floats, reverse=True)
+        total.append(sorted_amounts[0])
+        cpt = 1
+        while(len(amounts) > cpt and sorted_amounts[cpt] != sorted_amounts[0]):
+            cpt+=1
+        if(len(amounts) > cpt and sorted_amounts[cpt] != sorted_amounts[0]):
+            subtotal.append(sorted_amounts[cpt])
 
 data = {
     'first line': lines[0] if len(lines) > 0 else None,
     'title': brandName,
     'date': dates[0] if len(dates) > 0 else None,
     'time': times[0] if len(times) > 0 else None,
-    'place': lines[2] if len(lines) > 0 else None,
+    'place1': lines[2] if len(lines) > 0 else None,
+    'place2': lines[3] if len(lines) > 0 else None,
     'type': type[0] if len(type) > 0 else None,
     'total': total[-1] if len(total) > 0 else None,
     'subtotal': subtotal[-1] if len(subtotal) > 0 else None
