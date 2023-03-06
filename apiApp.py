@@ -1,6 +1,6 @@
 import cv2
 from flask import Flask, request, jsonify
-from python_app import *
+from app import *
 
 # Create an instance of the application
 app = Flask(__name__)
