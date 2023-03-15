@@ -16,7 +16,7 @@ itsdangerous==2.1.2
 Jinja2==3.1.2
 junit-xml==1.9
 MarkupSafe==2.1.2
-matplotlib==3.7.1
+matplotlib==3.5.3
 multidict==6.0.2
 numpy==1.22.3
 opencv-python==4.7.0.72
