@@ -23,5 +23,10 @@ def process_image():
     # Renvoie les résultats sous forme de fichier JSON
     return jsonify(result)
 
+# Ping route
+@app.route('/ping', methods=['GET'])
+def ping():
+    return jsonify({'status': 'ok'})
+
 if __name__ == "__main__":
     app.run(debug = True)
