@@ -4,7 +4,10 @@ import matplotlib.pyplot as plt
 import pytesseract
 from skimage.filters import threshold_local
 import re
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe'
+# path to tesseract.exe
+#pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe'
+# path to linux tesseract
+pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
 
 # Preprocessing part ->
 # Resize the image
