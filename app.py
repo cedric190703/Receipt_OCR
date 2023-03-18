@@ -7,7 +7,7 @@ import re
 # path to tesseract.exe
 #pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe'
 # path to linux tesseract
-pytesseract.pytesseract.tesseract_cmd = r'tesseract'
+pytesseract.pytesseract.tesseract_cmd = r'./tesseract'
 
 # Preprocessing part ->
 # Resize the image
