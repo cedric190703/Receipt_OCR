@@ -7,7 +7,7 @@ import re
 # path to tesseract.exe
 #pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe'
 # path to linux tesseract
-pytesseract.pytesseract.tesseract_cmd = r'./tesseract'
+pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
 
 # Preprocessing part ->
 # Resize the image
@@ -180,7 +180,7 @@ def getBrand(lines):
     brandName = None
     # Check the 8 first lines
     if(len(lines) > 0):
-        for idx in range(1,8):
+        for idx in range(1, min(8, len(lines))):
             # Loop through the list of brands and search for each brand in the sentence
             for brand in brands_list:
                 pattern = re.compile(r'\b{}\b'.format(brand))
@@ -208,8 +208,8 @@ def getResult(lines, dates, times, total, subtotal, types, brand):
         'title': brand,
         'date': dates[0] if len(dates) > 0 else None,
         'time': times[0] if len(times) > 0 else None,
-        'place1': lines[2] if len(lines) > 0 else None,
-        'place2': lines[3] if len(lines) > 0 else None,
+        'place1': lines[2] if len(lines) > 2 else None,
+        'place2': lines[3] if len(lines) > 3 else None,
         'type': types[0] if len(types) > 0 else None,
         'total': total[-1] if len(total) > 0 else None,
         'subtotal': subtotal[-1] if len(subtotal) > 0 else None

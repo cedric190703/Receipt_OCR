@@ -1,25 +1,25 @@
-FROM ubuntu:18.04
+# Utiliser une image de Python 3.9 comme base
+FROM python:3.9-slim-buster
 
-ENV DEBIAN_FRONTEND=noninteractive
+# Installer les dépendances système nécessaires pour Tesseract
+RUN apt-get update && apt-get install -y \
+    tesseract-ocr \
+    libtesseract-dev \
+    libgl1\
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update \
-  && apt-get -y install tesseract-ocr \
-  && apt-get install -y python3 python3-distutils python3-pip \
-  && cd /usr/local/bin \
-  && ln -s /usr/bin/python3 python \
-  && pip3 --no-cache-dir install --upgrade pip \
-  && rm -rf /var/lib/apt/lists/*
-
-RUN apt update \
-  && apt-get install ffmpeg libsm6 libxext6 -y
-RUN pip3 install pytesseract
-RUN pip3 install opencv-python
-RUN pip3 install pillow
-
-COPY . /app
+# Créer et travailler dans un répertoire de travail pour l'application
 WORKDIR /app
 
+# Copier tout le contenu du répertoire courant dans le répertoire de travail
+COPY . /app
+
+# Installer les dépendances Python de l'application dans requirements.txt
 RUN pip install -r requirements.txt
 
-ENTRYPOINT ["python3"]
-CMD ["apiApp.py"]
+# Exposer le port 5000 pour la communication avec l'application
+EXPOSE 5000
+
+# Démarrer l'application Flask
+ENV FLASK_APP=apiApp.py
+CMD ["flask", "run", "--host=0.0.0.0"]

@@ -1,3 +1,5 @@
 flask
 matplotlib
 scikit-image
+opencv-python
+pytesseract
