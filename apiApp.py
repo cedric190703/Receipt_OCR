@@ -10,8 +10,8 @@ app = Flask(__name__)
 def process_image():
     # Vérifie si le fichier image est présent dans la requête
     if 'image' not in request.files:
-        return jsonify({'error': 'Aucun fichier image n\'a été envoyé.'}), 400
-
+        return jsonify({'error': 'Aucun fichier image n\'a été envoyé.'+request.files}), 400
+    print(request.files)
     # Read the image file from the request and convert it to a NumPy array using cv2.imdecode()
     image_file = request.files['image']
     image_data = image_file.read()
